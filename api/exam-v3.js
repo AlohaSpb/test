@@ -49,7 +49,7 @@ function questionPage(attempt,bank){
 async function sendDiscord(attempt,bank,correct,total,percent,passed,mistakes){
   const webhook=process.env.DISCORD_WEBHOOK_URL;if(!webhook)return false;
   const embeds=[];
-  const err=mistakes.slice(0,6).map((m,i)=>`**${i+1}. ${m.q}**\nОтвет: ${m.selected.length?m.selected.join('; '):'нет ответа / таймаут'}\nПравильно: ${m.correct.join('; ')}\nОснование: ${m.basis}`).join('\n\n');
+  const err=mistakes.slice(0,6).map((m,i)=>`**${i+1}. ${m.q}**\nОтвет экзаменуемого: ${m.selected.length?m.selected.join('; '):'нет ответа / таймаут'}\n\nОснование: ${m.basis}`).join('\n\n');
   const result={color:passed?0x22c55e:0xef4444,title:passed?'✅ ТЕСТ СДАН':'❌ ТЕСТ НЕ СДАН',description:`**${bank.title}**`,fields:[{name:'👤 Сотрудник',value:safeText(attempt.player_name),inline:true},{name:'🆔 Static ID',value:safeText(attempt.static_id,50),inline:true},{name:'📊 Результат',value:`${correct}/${total} (${percent}%)`,inline:true}],timestamp:new Date().toISOString()};
   if(err)result.fields.push({name:'🔎 Ошибки',value:err.slice(0,1000)});
   embeds.push(result);
@@ -70,7 +70,7 @@ async function answer(req,res,id,qid,selected,forced=false){
     return res.status(200).send(questionPage(n,bank));
   }
   let correct=0;const mistakes=[];
-  for(const id2 of a.question_order){const q=bank.questions.find(x=>x.id===id2),chosen=answers[id2]||[];if(sameSet(chosen,q.a))correct++;else mistakes.push({q:q.q,selected:chosen.map(i=>q.o[i]).filter(Boolean),correct:q.a.map(i=>q.o[i]),basis:q.basis});}
+  for(const id2 of a.question_order){const q=bank.questions.find(x=>x.id===id2),chosen=answers[id2]||[];if(sameSet(chosen,q.a))correct++;else mistakes.push({q:q.q,selected:chosen.map(i=>q.o[i]).filter(Boolean),basis:q.basis});}
   const total=a.question_order.length,percent=Math.round(correct/total*100),passed=percent>=bank.passPercent;
   await sql`UPDATE dpk_exam_attempts SET answers=${sql.json(answers)},timed_out_questions=${sql.json(tos)},current_index=${next},completed_at=NOW(),score=${correct},total=${total},percent=${percent},passed=${passed} WHERE id=${id}`;
   await sendDiscord(a,bank,correct,total,percent,passed,mistakes);
