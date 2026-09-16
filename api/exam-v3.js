@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { banks } from './_lib/questions.js';
-import { ensureSchema, getClient, normalizeName, shuffle, safeText } from './_lib/db.js';
+import { ensureSchema, getClient, getPassPercent, normalizeName, shuffle, safeText } from './_lib/db.js';
 
 const sameSet=(a,b)=>{
   const x=[...(a||[])].map(Number).sort((m,n)=>m-n);
@@ -27,7 +27,8 @@ async function bankFor(sql,testId){
   await ensureOverrides(sql);
   const rows=await sql`SELECT * FROM dpk_question_overrides WHERE test_id=${testId}`;
   const map=new Map(rows.map(r=>[r.question_id,r]));
-  return {...base,questions:base.questions.map(q=>{
+  const passPercent=await getPassPercent(sql,testId,base.passPercent);
+  return {...base,passPercent,questions:base.questions.map(q=>{
     const r=map.get(q.id);
     return r?{...q,q:r.question_text,o:r.options,a:r.correct_answers,basis:r.basis||q.basis}:q;
   })};

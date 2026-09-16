@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { banks } from './_lib/questions.js';
-import { ensureSchema, getClient } from './_lib/db.js';
+import { ensureSchema, getClient, getPassPercent, savePassPercent } from './_lib/db.js';
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 const sessionSecret=()=>process.env.ADMIN_PASSWORD||'';
@@ -38,7 +38,7 @@ async function questions(sql,testId){
 }
 function shell(body){
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Админ ДПК</title>
-  <style>*{box-sizing:border-box}body{margin:0;background:#0b0d10;color:#f5f7fb;font-family:Arial,sans-serif}.wrap{max-width:1100px;margin:auto;padding:24px}.panel,.card{background:#15181e;border:1px solid #2b3039;border-radius:16px;padding:20px;margin:18px 0}.card{background:#0f1116}.top{display:flex;justify-content:space-between;gap:14px;align-items:center}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.answers{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}label{display:block;margin:10px 0 5px;color:#cdd2da}input[type=text],input[type=password],textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #39404b;background:#0a0c10;color:#fff}textarea{min-height:90px}.btn{display:inline-block;padding:10px 14px;border-radius:8px;border:0;background:#a91f1f;color:#fff;font-weight:700;cursor:pointer;text-decoration:none}.btn.secondary{background:#272c35}.muted{color:#9ca3af;font-size:13px}.ok{color:#86efac}.badge{font-size:12px;padding:3px 8px;border-radius:999px;background:#292d35;color:#d1d5db}@media(max-width:700px){.grid,.answers{grid-template-columns:1fr}}</style></head><body><main class="wrap">${body}</main></body></html>`;
+  <style>*{box-sizing:border-box}body{margin:0;background:#0b0d10;color:#f5f7fb;font-family:Arial,sans-serif}.wrap{max-width:1100px;margin:auto;padding:24px}.panel,.card{background:#15181e;border:1px solid #2b3039;border-radius:16px;padding:20px;margin:18px 0}.card{background:#0f1116}.top{display:flex;justify-content:space-between;gap:14px;align-items:center}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.answers{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}label{display:block;margin:10px 0 5px;color:#cdd2da}input[type=text],input[type=password],input[type=number],textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #39404b;background:#0a0c10;color:#fff}textarea{min-height:90px}.btn{display:inline-block;padding:10px 14px;border-radius:8px;border:0;background:#a91f1f;color:#fff;font-weight:700;cursor:pointer;text-decoration:none}.btn.secondary{background:#272c35}.muted{color:#9ca3af;font-size:13px}.ok{color:#86efac}.badge{font-size:12px;padding:3px 8px;border-radius:999px;background:#292d35;color:#d1d5db}@media(max-width:700px){.grid,.answers{grid-template-columns:1fr}}</style></head><body><main class="wrap">${body}</main></body></html>`;
 }
 function login(msg=''){
   return shell(`<section class="panel"><h1>Администратор тестов ДПК</h1><p class="muted">Редактирование вопросов и ответов.</p>${msg?`<p style="color:#fca5a5">${esc(msg)}</p>`:''}<form method="post"><input type="hidden" name="action" value="login"><label>Пароль</label><input type="password" name="password" required><button class="btn" style="margin-top:12px">Войти</button></form><p><a class="btn secondary" href="/">Главный экран</a></p></section>`);
@@ -66,6 +66,14 @@ export default async function handler(req,res){
       res.statusCode=303; res.setHeader('Location','/api/admin-v3'); return res.end();
     }
 
+    if(req.method==='POST'&&action==='save_settings'){
+      const testId=String(req.body.testId||'');
+      const passPercent=Number(req.body.passPercent);
+      if(!banks[testId]||!Number.isInteger(passPercent)||passPercent<1||passPercent>100) return res.status(400).send(shell('<section class="panel">Порог прохождения должен быть целым числом от 1 до 100.</section>'));
+      await savePassPercent(sql,testId,passPercent);
+      res.statusCode=303; res.setHeader('Location',`/api/admin-v3?testId=${encodeURIComponent(testId)}&settingsSaved=1`); return res.end();
+    }
+
     if(req.method==='POST'&&action==='save'){
       const testId=String(req.body.testId||''),qid=String(req.body.questionId||'');
       const qtext=String(req.body.questionText||'').trim(),basis=String(req.body.basis||'').trim();
@@ -88,10 +96,10 @@ export default async function handler(req,res){
     }
 
     const testId=banks[String(req.query.testId||'')]?String(req.query.testId):'day1';
-    const saved=String(req.query.saved||''),qs=await questions(sql,testId);
+    const saved=String(req.query.saved||''),settingsSaved=String(req.query.settingsSaved||'')==='1',passPercent=await getPassPercent(sql,testId,banks[testId].passPercent),qs=await questions(sql,testId);
     const cards=qs.map((q,i)=>`<form class="card" method="post"><input type="hidden" name="action" value="save"><input type="hidden" name="testId" value="${esc(testId)}"><input type="hidden" name="questionId" value="${esc(q.id)}"><div class="top"><b>${i+1}. ${esc(q.id)} ${q.changed?'<span class="badge">изменён</span>':''}</b>${saved===q.id?'<span class="ok">Сохранено ✓</span>':''}</div><label>Вопрос</label><textarea name="questionText" required>${esc(q.q)}</textarea><div class="grid">${[0,1,2,3].map(n=>`<div><label>Вариант ${n+1}</label><input type="text" name="opt${n}" value="${esc(q.o[n])}" required></div>`).join('')}</div><label>Правильный ответ / ответы</label><div class="answers">${[0,1,2,3].map(n=>`<label><input type="checkbox" name="correct" value="${n}" ${q.a.includes(n)?'checked':''}> Вариант ${n+1}</label>`).join('')}</div><label>Основание / статья</label><input type="text" name="basis" value="${esc(q.basis||'')}"><div style="margin-top:12px"><button class="btn">Сохранить</button></div></form>${q.changed?`<form method="post"><input type="hidden" name="action" value="reset"><input type="hidden" name="testId" value="${esc(testId)}"><input type="hidden" name="questionId" value="${esc(q.id)}"><button class="btn secondary">Вернуть исходный</button></form>`:''}`).join('');
 
-    return res.status(200).send(shell(`<div class="top"><div><h1>Администратор тестов ДПК</h1><p class="muted">Изменения сохраняются в PostgreSQL.</p></div><div><a class="btn secondary" href="/">Главный экран</a> <form method="post" style="display:inline"><input type="hidden" name="action" value="logout"><button class="btn secondary">Выйти</button></form></div></div><section class="panel"><form method="get"><label>Тест</label><select name="testId" onchange="this.form.submit()"><option value="day1" ${testId==='day1'?'selected':''}>День 1</option><option value="day2" ${testId==='day2'?'selected':''}>День 2</option><option value="final" ${testId==='final'?'selected':''}>Итоговый</option></select></form></section>${cards}`));
+    return res.status(200).send(shell(`<div class="top"><div><h1>Администратор тестов ДПК</h1><p class="muted">Изменения сохраняются в PostgreSQL.</p></div><div><a class="btn secondary" href="/">Главный экран</a> <form method="post" style="display:inline"><input type="hidden" name="action" value="logout"><button class="btn secondary">Выйти</button></form></div></div><section class="panel"><form method="get"><label>Тест</label><select name="testId" onchange="this.form.submit()"><option value="day1" ${testId==='day1'?'selected':''}>День 1</option><option value="day2" ${testId==='day2'?'selected':''}>День 2</option><option value="final" ${testId==='final'?'selected':''}>Итоговый</option></select></form></section><section class="panel"><h2>Настройки теста</h2>${settingsSaved?'<p class="ok">Порог сохранён ✓</p>':''}<form method="post"><input type="hidden" name="action" value="save_settings"><input type="hidden" name="testId" value="${esc(testId)}"><label>Порог прохождения, %</label><input type="number" name="passPercent" min="1" max="100" step="1" value="${passPercent}" required><p class="muted">Экзамен считается сданным при результате не ниже этого значения.</p><button class="btn">Сохранить настройки</button></form></section>${cards}`));
   }catch(e){
     console.error(e);
     return res.status(500).send(shell('<section class="panel"><h2>Ошибка панели администратора</h2><p class="muted">Проверьте логи Vercel.</p></section>'));

@@ -46,6 +46,11 @@ export async function ensureSchema() {
     `;
     await sql`CREATE INDEX IF NOT EXISTS idx_dpk_attempts_static_started ON dpk_exam_attempts(static_id, started_at DESC)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_dpk_attempts_discord_started ON dpk_exam_attempts(discord_id, started_at DESC)`;
+    await sql`CREATE TABLE IF NOT EXISTS dpk_test_settings (
+      test_id TEXT PRIMARY KEY,
+      pass_percent INTEGER NOT NULL CHECK (pass_percent BETWEEN 1 AND 100),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`;
     // Earlier versions collected IP-related fields. Remove both the data and
     // supporting index when an existing database is upgraded.
     await sql`DROP INDEX IF EXISTS idx_dpk_attempts_iphash_started`;
@@ -54,6 +59,18 @@ export async function ensureSchema() {
     await sql`ALTER TABLE dpk_exam_attempts DROP COLUMN IF EXISTS ip_changed`;
   })();
   return schemaPromise;
+}
+
+export async function getPassPercent(sql, testId, fallback) {
+  const rows = await sql`SELECT pass_percent FROM dpk_test_settings WHERE test_id = ${testId} LIMIT 1`;
+  const value = Number(rows[0]?.pass_percent);
+  return Number.isInteger(value) && value >= 1 && value <= 100 ? value : fallback;
+}
+
+export async function savePassPercent(sql, testId, passPercent) {
+  await sql`INSERT INTO dpk_test_settings(test_id, pass_percent, updated_at)
+    VALUES(${testId}, ${passPercent}, NOW())
+    ON CONFLICT(test_id) DO UPDATE SET pass_percent = EXCLUDED.pass_percent, updated_at = NOW()`;
 }
 
 export function normalizeName(name) {
