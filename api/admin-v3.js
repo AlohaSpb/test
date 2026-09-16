@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { banks } from './_lib/questions.js';
-import { ensureSchema, getClient, getPassPercent, savePassPercent } from './_lib/db.js';
+import { ensureSchema, getClient, getPassPercent, getTestTitle, savePassPercent, saveTestTitle } from './_lib/db.js';
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 const sessionSecret=()=>process.env.ADMIN_PASSWORD||'';
@@ -28,10 +28,24 @@ async function ensureOverrides(sql){
     PRIMARY KEY(test_id,question_id)
   )`;
 }
-async function questions(sql,testId){
+async function testBank(sql,testId){
+  let bank=banks[testId];
+  if(!bank){
+    const rows=await sql`SELECT title,questions FROM dpk_custom_tests WHERE test_id=${testId} LIMIT 1`;
+    if(rows.length) bank={title:rows[0].title,passPercent:80,questions:rows[0].questions};
+  }
+  if(!bank)return null;
+  return {...bank,title:await getTestTitle(sql,testId,bank.title),passPercent:await getPassPercent(sql,testId,bank.passPercent)};
+}
+async function testList(sql){
+  const custom=await sql`SELECT test_id,title,questions FROM dpk_custom_tests ORDER BY created_at ASC`;
+  const raw=[...Object.entries(banks).map(([id,bank])=>({id,...bank})),...custom.map(row=>({id:row.test_id,title:row.title,passPercent:80,questions:row.questions}))];
+  return Promise.all(raw.map(async test=>({...test,title:await getTestTitle(sql,test.id,test.title),passPercent:await getPassPercent(sql,test.id,test.passPercent)})));
+}
+async function questions(sql,testId,bank){
   const rows=await sql`SELECT * FROM dpk_question_overrides WHERE test_id=${testId}`;
   const map=new Map(rows.map(r=>[r.question_id,r]));
-  return banks[testId].questions.map(q=>{
+  return bank.questions.map(q=>{
     const r=map.get(q.id);
     return r?{...q,q:r.question_text,o:r.options,a:r.correct_answers,basis:r.basis||q.basis,changed:true}:{...q,changed:false};
   });
@@ -69,15 +83,30 @@ export default async function handler(req,res){
     if(req.method==='POST'&&action==='save_settings'){
       const testId=String(req.body.testId||'');
       const passPercent=Number(req.body.passPercent);
-      if(!banks[testId]||!Number.isInteger(passPercent)||passPercent<1||passPercent>100) return res.status(400).send(shell('<section class="panel">Порог прохождения должен быть целым числом от 1 до 100.</section>'));
+      const title=String(req.body.title||'').trim().slice(0,120);
+      if(!await testBank(sql,testId)||!title||!Number.isInteger(passPercent)||passPercent<1||passPercent>100) return res.status(400).send(shell('<section class="panel">Укажите название и целый порог прохождения от 1 до 100.</section>'));
       await savePassPercent(sql,testId,passPercent);
+      await saveTestTitle(sql,testId,title);
       res.statusCode=303; res.setHeader('Location',`/api/admin-v3?testId=${encodeURIComponent(testId)}&settingsSaved=1`); return res.end();
+    }
+
+    if(req.method==='POST'&&action==='create_test'){
+      const title=String(req.body.title||'').trim().slice(0,120);
+      const sourceId=String(req.body.sourceTestId||'');
+      const source=await testBank(sql,sourceId);
+      if(!title||!source)return res.status(400).send(shell('<section class="panel">Укажите название и тест-образец.</section>'));
+      const testId=`custom-${crypto.randomUUID()}`;
+      const copiedQuestions=(await questions(sql,sourceId,source)).map(q=>({id:q.id,type:q.type,q:q.q,o:q.o,a:q.a,basis:q.basis}));
+      await sql`INSERT INTO dpk_custom_tests(test_id,title,questions) VALUES(${testId},${title},${sql.json(copiedQuestions)})`;
+      await savePassPercent(sql,testId,source.passPercent);
+      res.statusCode=303; res.setHeader('Location',`/api/admin-v3?testId=${encodeURIComponent(testId)}&created=1`); return res.end();
     }
 
     if(req.method==='POST'&&action==='save'){
       const testId=String(req.body.testId||''),qid=String(req.body.questionId||'');
       const qtext=String(req.body.questionText||'').trim(),basis=String(req.body.basis||'').trim();
-      if(!banks[testId]||!banks[testId].questions.some(q=>q.id===qid)) return res.status(400).send(shell('<section class="panel">Вопрос не найден.</section>'));
+      const bank=await testBank(sql,testId);
+      if(!bank||!bank.questions.some(q=>q.id===qid)) return res.status(400).send(shell('<section class="panel">Вопрос не найден.</section>'));
       const opts=[0,1,2,3].map(i=>String(req.body['opt'+i]||'').trim());
       if(!qtext||opts.some(x=>!x)) return res.status(400).send(shell('<section class="panel">Заполните вопрос и все 4 варианта.</section>'));
       const raw=req.body.correct;
@@ -95,11 +124,16 @@ export default async function handler(req,res){
       res.statusCode=303; res.setHeader('Location',`/api/admin-v3?testId=${encodeURIComponent(testId)}`); return res.end();
     }
 
-    const testId=banks[String(req.query.testId||'')]?String(req.query.testId):'day1';
-    const saved=String(req.query.saved||''),settingsSaved=String(req.query.settingsSaved||'')==='1',passPercent=await getPassPercent(sql,testId,banks[testId].passPercent),qs=await questions(sql,testId);
+    const tests=await testList(sql);
+    const requestedId=String(req.query.testId||'');
+    const testId=tests.some(test=>test.id===requestedId)?requestedId:'day1';
+    const bank=await testBank(sql,testId);
+    const saved=String(req.query.saved||''),settingsSaved=String(req.query.settingsSaved||'')==='1',created=String(req.query.created||'')==='1',qs=await questions(sql,testId,bank);
+    const testOptions=tests.map(test=>`<option value="${esc(test.id)}" ${test.id===testId?'selected':''}>${esc(test.title)}</option>`).join('');
+    const sourceOptions=tests.map(test=>`<option value="${esc(test.id)}">${esc(test.title)} (${test.questions.length} вопр.)</option>`).join('');
     const cards=qs.map((q,i)=>`<form class="card" method="post"><input type="hidden" name="action" value="save"><input type="hidden" name="testId" value="${esc(testId)}"><input type="hidden" name="questionId" value="${esc(q.id)}"><div class="top"><b>${i+1}. ${esc(q.id)} ${q.changed?'<span class="badge">изменён</span>':''}</b>${saved===q.id?'<span class="ok">Сохранено ✓</span>':''}</div><label>Вопрос</label><textarea name="questionText" required>${esc(q.q)}</textarea><div class="grid">${[0,1,2,3].map(n=>`<div><label>Вариант ${n+1}</label><input type="text" name="opt${n}" value="${esc(q.o[n])}" required></div>`).join('')}</div><label>Правильный ответ / ответы</label><div class="answers">${[0,1,2,3].map(n=>`<label><input type="checkbox" name="correct" value="${n}" ${q.a.includes(n)?'checked':''}> Вариант ${n+1}</label>`).join('')}</div><label>Основание / статья</label><input type="text" name="basis" value="${esc(q.basis||'')}"><div style="margin-top:12px"><button class="btn">Сохранить</button></div></form>${q.changed?`<form method="post"><input type="hidden" name="action" value="reset"><input type="hidden" name="testId" value="${esc(testId)}"><input type="hidden" name="questionId" value="${esc(q.id)}"><button class="btn secondary">Вернуть исходный</button></form>`:''}`).join('');
 
-    return res.status(200).send(shell(`<div class="top"><div><h1>Администратор тестов ДПК</h1><p class="muted">Изменения сохраняются в PostgreSQL.</p></div><div><a class="btn secondary" href="/">Главный экран</a> <form method="post" style="display:inline"><input type="hidden" name="action" value="logout"><button class="btn secondary">Выйти</button></form></div></div><section class="panel"><form method="get"><label>Тест</label><select name="testId" onchange="this.form.submit()"><option value="day1" ${testId==='day1'?'selected':''}>День 1</option><option value="day2" ${testId==='day2'?'selected':''}>День 2</option><option value="final" ${testId==='final'?'selected':''}>Итоговый</option></select></form></section><section class="panel"><h2>Настройки теста</h2>${settingsSaved?'<p class="ok">Порог сохранён ✓</p>':''}<form method="post"><input type="hidden" name="action" value="save_settings"><input type="hidden" name="testId" value="${esc(testId)}"><label>Порог прохождения, %</label><input type="number" name="passPercent" min="1" max="100" step="1" value="${passPercent}" required><p class="muted">Экзамен считается сданным при результате не ниже этого значения.</p><button class="btn">Сохранить настройки</button></form></section>${cards}`));
+    return res.status(200).send(shell(`<div class="top"><div><h1>Администратор тестов ДПК</h1><p class="muted">Изменения сохраняются в PostgreSQL.</p></div><div><a class="btn secondary" href="/">Главный экран</a> <form method="post" style="display:inline"><input type="hidden" name="action" value="logout"><button class="btn secondary">Выйти</button></form></div></div><section class="panel"><form method="get"><label>Тест</label><select name="testId" onchange="this.form.submit()">${testOptions}</select></form></section><section class="panel"><h2>Настройки теста</h2>${settingsSaved?'<p class="ok">Настройки сохранены ✓</p>':''}${created?'<p class="ok">Новый тест создан ✓</p>':''}<form method="post"><input type="hidden" name="action" value="save_settings"><input type="hidden" name="testId" value="${esc(testId)}"><label>Название теста</label><input type="text" name="title" value="${esc(bank.title)}" required><label>Порог прохождения, %</label><input type="number" name="passPercent" min="1" max="100" step="1" value="${bank.passPercent}" required><p class="muted">Экзамен считается сданным при результате не ниже этого значения.</p><button class="btn">Сохранить настройки</button></form></section><section class="panel"><h2>Добавить тест</h2><p class="muted">Новый тест создаётся как независимая копия выбранного образца: вопросы затем можно менять ниже.</p><form method="post"><input type="hidden" name="action" value="create_test"><label>Название нового теста</label><input type="text" name="title" required><label>Создать на основе</label><select name="sourceTestId">${sourceOptions}</select><button class="btn">Создать тест</button></form></section>${cards}`));
   }catch(e){
     console.error(e);
     return res.status(500).send(shell('<section class="panel"><h2>Ошибка панели администратора</h2><p class="muted">Проверьте логи Vercel.</p></section>'));

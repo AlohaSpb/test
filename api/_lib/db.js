@@ -49,7 +49,15 @@ export async function ensureSchema() {
     await sql`CREATE TABLE IF NOT EXISTS dpk_test_settings (
       test_id TEXT PRIMARY KEY,
       pass_percent INTEGER NOT NULL CHECK (pass_percent BETWEEN 1 AND 100),
+      title TEXT,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`;
+    await sql`ALTER TABLE dpk_test_settings ADD COLUMN IF NOT EXISTS title TEXT`;
+    await sql`CREATE TABLE IF NOT EXISTS dpk_custom_tests (
+      test_id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      questions JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`;
     // Earlier versions collected IP-related fields. Remove both the data and
     // supporting index when an existing database is upgraded.
@@ -71,6 +79,18 @@ export async function savePassPercent(sql, testId, passPercent) {
   await sql`INSERT INTO dpk_test_settings(test_id, pass_percent, updated_at)
     VALUES(${testId}, ${passPercent}, NOW())
     ON CONFLICT(test_id) DO UPDATE SET pass_percent = EXCLUDED.pass_percent, updated_at = NOW()`;
+}
+
+export async function getTestTitle(sql, testId, fallback) {
+  const rows = await sql`SELECT title FROM dpk_test_settings WHERE test_id = ${testId} LIMIT 1`;
+  const title = String(rows[0]?.title || '').trim();
+  return title || fallback;
+}
+
+export async function saveTestTitle(sql, testId, title) {
+  await sql`INSERT INTO dpk_test_settings(test_id, pass_percent, title, updated_at)
+    VALUES(${testId}, 80, ${title}, NOW())
+    ON CONFLICT(test_id) DO UPDATE SET title = EXCLUDED.title, updated_at = NOW()`;
 }
 
 export function normalizeName(name) {
