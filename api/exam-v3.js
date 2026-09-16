@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { banks } from './_lib/questions.js';
-import { ensureSchema, getClient, getRequestIp, hashIp, normalizeName, shuffle, safeText } from './_lib/db.js';
+import { ensureSchema, getClient, normalizeName, shuffle, safeText } from './_lib/db.js';
 
 const sameSet=(a,b)=>{
   const x=[...(a||[])].map(Number).sort((m,n)=>m-n);
@@ -44,17 +44,13 @@ function questionPage(attempt,bank){
   const order=attempt.option_orders[qid]||q.o.map((_,i)=>i),type=q.type==='multi'?'checkbox':'radio';
   const opts=order.map((orig,i)=>`<label class="opt"><input type="${type}" name="selected" value="${i}"><span>${esc(q.o[orig])}</span></label>`).join('');
   const timeout=`/api/exam-v3?attemptId=${encodeURIComponent(attempt.id)}&questionId=${encodeURIComponent(qid)}&timeout=1`;
-  return page(`<section class="panel" data-timeout-url="${esc(timeout)}"><div style="display:flex;justify-content:space-between;gap:18px;align-items:center"><div><h2>${esc(bank.title)}</h2><div class="meta">Вопрос ${idx+1} из ${attempt.question_order.length}</div></div><div class="timer"><span id="seconds">20</span> сек.</div></div><div class="bar"><div id="timerbar" style="height:100%;width:100%;background:linear-gradient(90deg,#22c55e,#f59e0b,#ef4444);transition:width .9s linear"></div></div><div class="question">${esc(q.q)}</div>${q.type==='multi'?'<div class="small" style="color:#fca5a5">Можно выбрать несколько вариантов.</div>':''}<form id="answerForm" method="post" action="/api/exam-v3"><input type="hidden" name="mode" value="answer"><input type="hidden" name="attemptId" value="${attempt.id}"><input type="hidden" name="questionId" value="${qid}">${opts}<div class="actions"><button id="answerBtn" class="btn" type="submit">Ответить и продолжить</button><a class="btn secondary" href="/">Вернуться на главный экран</a></div></form><p class="small">По истечении 20 секунд вопрос автоматически считается пропущенным.</p></section><script src="/api/timer-v3"></script>`);
+  return page(`<section class="panel" data-timeout-url="${esc(timeout)}"><div style="display:flex;justify-content:space-between;gap:18px;align-items:center"><div><h2>${esc(bank.title)}</h2><div class="meta">Вопрос ${idx+1} из ${attempt.question_order.length}</div></div><div class="timer"><span id="seconds">20</span> сек.</div></div><div class="bar"><div id="timerbar" style="height:100%;width:100%;background:linear-gradient(90deg,#22c55e,#f59e0b,#ef4444);transition:width .9s linear"></div></div><div class="question">${esc(q.q)}</div>${q.type==='multi'?'<div class="small" style="color:#fca5a5">Можно выбрать несколько вариантов.</div>':''}<form id="answerForm" method="post" action="/api/exam-v3"><input type="hidden" name="mode" value="answer"><input type="hidden" name="attemptId" value="${attempt.id}"><input type="hidden" name="questionId" value="${qid}">${opts}<div class="actions"><button id="answerBtn" class="btn" type="submit">Ответить и продолжить</button><a class="btn secondary" href="/">Вернуться на главный экран</a></div></form><p class="small">По истечении 20 секунд вопрос автоматически считается пропущенным.</p></section><script>(()=>{const root=document.querySelector('[data-timeout-url]'),seconds=document.getElementById('seconds'),bar=document.getElementById('timerbar'),form=document.getElementById('answerForm');if(!root)return;let left=20,done=false;const draw=()=>{if(seconds)seconds.textContent=String(left);if(bar)bar.style.width=Math.max(0,left/20*100)+'%'};draw();const timer=setInterval(()=>{left--;draw();if(left<=0&&!done){done=true;clearInterval(timer);location.replace(root.dataset.timeoutUrl)}},1000);form?.addEventListener('submit',()=>{done=true;clearInterval(timer);const button=document.getElementById('answerBtn');if(button){button.disabled=true;button.textContent='Отправка...'}})})()</script>`);
 }
-async function sendDiscord(attempt,bank,correct,total,percent,passed,mistakes,sameIp,ipChanged){
+async function sendDiscord(attempt,bank,correct,total,percent,passed,mistakes){
   const webhook=process.env.DISCORD_WEBHOOK_URL;if(!webhook)return false;
   const embeds=[];
-  if(sameIp.length||ipChanged){
-    const prior=sameIp.map(x=>`• ${safeText(x.player_name,80)} | Static ID: ${safeText(x.static_id,40)}`).join('\n')||'IP изменился во время экзамена.';
-    embeds.push({color:0xff0000,title:'⚠️⚠️⚠️ WARNING — ПОДОЗРЕНИЕ НА ПОДМЕНУ ЭКЗАМЕНУЕМОГО ⚠️⚠️⚠️',description:`Текущий: **${safeText(attempt.player_name)}** | Static ID: **${safeText(attempt.static_id,50)}**\nIP: **${safeText(attempt.ip_address,80)}**\n\nСовпадения:\n${prior}\n\nСовпадение IP — сигнал для ручной проверки, а не автоматическое доказательство.`,timestamp:new Date().toISOString()});
-  }
   const err=mistakes.slice(0,6).map((m,i)=>`**${i+1}. ${m.q}**\nОтвет: ${m.selected.length?m.selected.join('; '):'нет ответа / таймаут'}\nПравильно: ${m.correct.join('; ')}\nОснование: ${m.basis}`).join('\n\n');
-  const result={color:passed?0x22c55e:0xef4444,title:passed?'✅ ТЕСТ СДАН':'❌ ТЕСТ НЕ СДАН',description:`**${bank.title}**`,fields:[{name:'👤 Сотрудник',value:safeText(attempt.player_name),inline:true},{name:'🆔 Static ID',value:safeText(attempt.static_id,50),inline:true},{name:'🌐 IP',value:safeText(attempt.ip_address,80),inline:true},{name:'📊 Результат',value:`${correct}/${total} (${percent}%)`,inline:true}],timestamp:new Date().toISOString()};
+  const result={color:passed?0x22c55e:0xef4444,title:passed?'✅ ТЕСТ СДАН':'❌ ТЕСТ НЕ СДАН',description:`**${bank.title}**`,fields:[{name:'👤 Сотрудник',value:safeText(attempt.player_name),inline:true},{name:'🆔 Static ID',value:safeText(attempt.static_id,50),inline:true},{name:'📊 Результат',value:`${correct}/${total} (${percent}%)`,inline:true}],timestamp:new Date().toISOString()};
   if(err)result.fields.push({name:'🔎 Ошибки',value:err.slice(0,1000)});
   embeds.push(result);
   try{const r=await fetch(webhook,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'ДПК • Академия',embeds,allowed_mentions:{parse:[]}})});return r.ok}catch{return false}
@@ -65,20 +61,19 @@ async function answer(req,res,id,qid,selected,forced=false){
   const a=rows[0];if(a.completed_at)return res.status(409).send(page('<section class="panel warn">Экзамен уже завершён.</section>'));
   const bank=await bankFor(sql,a.test_id),idx=Number(a.current_index),expected=a.question_order[idx];
   if(expected!==qid)return res.status(409).send(page('<section class="panel warn">Нарушена последовательность вопросов.</section>'));
-  const currentHash=hashIp(getRequestIp(req)),ipChanged=currentHash!==a.ip_hash,elapsed=Date.now()-new Date(a.question_started_at).getTime(),timedOut=forced||elapsed>22000;
+  const elapsed=Date.now()-new Date(a.question_started_at).getTime(),timedOut=forced||elapsed>22000;
   const order=a.option_orders[qid],raw=timedOut?[]:(Array.isArray(selected)?selected:[selected]).filter(v=>v!==undefined).map(Number).filter(n=>Number.isInteger(n)&&n>=0&&n<order.length),orig=raw.map(i=>order[i]);
   const answers={...(a.answers||{})};answers[qid]=orig;const tos=[...(a.timed_out_questions||[])];if(timedOut&&!tos.includes(qid))tos.push(qid);const next=idx+1;
   if(next<a.question_order.length){
-    await sql`UPDATE dpk_exam_attempts SET answers=${sql.json(answers)},timed_out_questions=${sql.json(tos)},current_index=${next},question_started_at=NOW(),ip_changed=ip_changed OR ${ipChanged} WHERE id=${id}`;
+    await sql`UPDATE dpk_exam_attempts SET answers=${sql.json(answers)},timed_out_questions=${sql.json(tos)},current_index=${next},question_started_at=NOW() WHERE id=${id}`;
     const n=(await sql`SELECT * FROM dpk_exam_attempts WHERE id=${id} LIMIT 1`)[0];
     return res.status(200).send(questionPage(n,bank));
   }
   let correct=0;const mistakes=[];
   for(const id2 of a.question_order){const q=bank.questions.find(x=>x.id===id2),chosen=answers[id2]||[];if(sameSet(chosen,q.a))correct++;else mistakes.push({q:q.q,selected:chosen.map(i=>q.o[i]).filter(Boolean),correct:q.a.map(i=>q.o[i]),basis:q.basis});}
   const total=a.question_order.length,percent=Math.round(correct/total*100),passed=percent>=bank.passPercent;
-  await sql`UPDATE dpk_exam_attempts SET answers=${sql.json(answers)},timed_out_questions=${sql.json(tos)},current_index=${next},completed_at=NOW(),score=${correct},total=${total},percent=${percent},passed=${passed},ip_changed=ip_changed OR ${ipChanged} WHERE id=${id}`;
-  const sameIp=await sql`SELECT player_name,static_id FROM dpk_exam_attempts WHERE ip_hash=${a.ip_hash} AND id<>${id} AND started_at>NOW()-INTERVAL '30 days' AND (static_id<>${a.static_id} OR player_name_norm<>${a.player_name_norm}) ORDER BY started_at DESC LIMIT 10`;
-  await sendDiscord(a,bank,correct,total,percent,passed,mistakes,sameIp,Boolean(a.ip_changed||ipChanged));
+  await sql`UPDATE dpk_exam_attempts SET answers=${sql.json(answers)},timed_out_questions=${sql.json(tos)},current_index=${next},completed_at=NOW(),score=${correct},total=${total},percent=${percent},passed=${passed} WHERE id=${id}`;
+  await sendDiscord(a,bank,correct,total,percent,passed,mistakes);
   return res.status(200).send(page(`<section class="panel center"><h2 class="${passed?'ok':'bad'}">${passed?'✅ ТЕСТ СДАН':'❌ ТЕСТ НЕ СДАН'}</h2><div class="score">${percent}%</div><p>Правильных ответов: ${correct} из ${total}.</p><div class="actions" style="justify-content:center"><a class="btn" href="/">Вернуться на главный экран</a></div></section>`));
 }
 export default async function handler(req,res){
@@ -92,8 +87,8 @@ export default async function handler(req,res){
     if(!bank||!name||!staticId)return res.status(400).send(page('<section class="panel warn">Заполните данные и выберите тест.</section>'));
     const recent=await sql`SELECT started_at FROM dpk_exam_attempts WHERE test_id=${testId} AND (static_id=${staticId} OR (${discordId}<>'' AND discord_id=${discordId})) AND started_at>NOW()-INTERVAL '15 minutes' ORDER BY started_at DESC LIMIT 1`;
     if(recent.length)return res.status(429).send(page('<section class="panel warn"><h2>⏳ Повторная сдача заблокирована</h2><p>Подождите 15 минут с начала предыдущей попытки.</p><a class="btn secondary" href="/">Главный экран</a></section>'));
-    const ip=getRequestIp(req),id=crypto.randomUUID(),qo=shuffle(bank.questions.map(q=>q.id)),oo={};for(const q of bank.questions)oo[q.id]=shuffle(q.o.map((_,i)=>i));
-    await sql`INSERT INTO dpk_exam_attempts(id,test_id,player_name,player_name_norm,static_id,discord_id,ip_address,ip_hash,question_order,option_orders,answers,current_index,question_started_at) VALUES(${id},${testId},${name},${normalizeName(name)},${staticId},${discordId||null},${ip},${hashIp(ip)},${sql.json(qo)},${sql.json(oo)},${sql.json({})},0,NOW())`;
+    const id=crypto.randomUUID(),qo=shuffle(bank.questions.map(q=>q.id)),oo={};for(const q of bank.questions)oo[q.id]=shuffle(q.o.map((_,i)=>i));
+    await sql`INSERT INTO dpk_exam_attempts(id,test_id,player_name,player_name_norm,static_id,discord_id,question_order,option_orders,answers,current_index,question_started_at) VALUES(${id},${testId},${name},${normalizeName(name)},${staticId},${discordId||null},${sql.json(qo)},${sql.json(oo)},${sql.json({})},0,NOW())`;
     const a=(await sql`SELECT * FROM dpk_exam_attempts WHERE id=${id} LIMIT 1`)[0];return res.status(200).send(questionPage(a,bank));
   }catch(e){console.error(e);return res.status(500).send(page('<section class="panel warn"><h2>Ошибка экзамена</h2><p>Проверьте логи Vercel.</p><a class="btn secondary" href="/">Главный экран</a></section>'))}
 }

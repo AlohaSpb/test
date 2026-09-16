@@ -1,5 +1,4 @@
 import postgres from 'postgres';
-import crypto from 'crypto';
 
 let client;
 let schemaPromise;
@@ -31,8 +30,6 @@ export async function ensureSchema() {
         player_name_norm TEXT NOT NULL,
         static_id TEXT NOT NULL,
         discord_id TEXT,
-        ip_address TEXT NOT NULL,
-        ip_hash TEXT NOT NULL,
         started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         question_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         completed_at TIMESTAMPTZ,
@@ -44,28 +41,19 @@ export async function ensureSchema() {
         score INTEGER,
         total INTEGER,
         percent INTEGER,
-        passed BOOLEAN,
-        ip_changed BOOLEAN NOT NULL DEFAULT FALSE
+        passed BOOLEAN
       )
     `;
     await sql`CREATE INDEX IF NOT EXISTS idx_dpk_attempts_static_started ON dpk_exam_attempts(static_id, started_at DESC)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_dpk_attempts_discord_started ON dpk_exam_attempts(discord_id, started_at DESC)`;
-    await sql`CREATE INDEX IF NOT EXISTS idx_dpk_attempts_iphash_started ON dpk_exam_attempts(ip_hash, started_at DESC)`;
+    // Earlier versions collected IP-related fields. Remove both the data and
+    // supporting index when an existing database is upgraded.
+    await sql`DROP INDEX IF EXISTS idx_dpk_attempts_iphash_started`;
+    await sql`ALTER TABLE dpk_exam_attempts DROP COLUMN IF EXISTS ip_address`;
+    await sql`ALTER TABLE dpk_exam_attempts DROP COLUMN IF EXISTS ip_hash`;
+    await sql`ALTER TABLE dpk_exam_attempts DROP COLUMN IF EXISTS ip_changed`;
   })();
   return schemaPromise;
-}
-
-export function getRequestIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) return forwarded.split(',')[0].trim();
-  const real = req.headers['x-real-ip'];
-  if (typeof real === 'string' && real.trim()) return real.trim();
-  return req.socket?.remoteAddress || 'unknown';
-}
-
-export function hashIp(ip) {
-  const secret = process.env.IP_HASH_SECRET || 'dpk-default-ip-secret-change-me';
-  return crypto.createHmac('sha256', secret).update(String(ip)).digest('hex');
 }
 
 export function normalizeName(name) {
