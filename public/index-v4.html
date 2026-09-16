@@ -26,6 +26,7 @@ input[type=text]{width:100%;margin-top:6px;padding:12px;border-radius:10px;borde
 .btn{display:inline-block;margin-top:18px;border:0;border-radius:10px;padding:13px 18px;font-weight:800;color:#fff;background:linear-gradient(#d52c2c,#941c1c);cursor:pointer;text-decoration:none}
 .btn.secondary{background:#262b34}
 .warn{border-left:4px solid #ef4444;background:#2a1111;padding:14px;border-radius:8px;color:#fecaca}
+.hint{position:relative;display:inline-block;margin-left:5px;color:#9ca3af;cursor:help}.hint:focus{outline:2px solid #93c5fd;border-radius:50%}.hint-card{display:none;position:absolute;z-index:10;left:0;top:24px;width:min(310px,75vw);padding:10px;border:1px solid #4b5563;border-radius:10px;background:#15181e;color:#e5e7eb;box-shadow:0 12px 32px #000b;font-size:13px;line-height:1.35}.hint:hover .hint-card,.hint:focus .hint-card{display:block}.hint-card img{display:block;width:100%;margin-top:8px;border-radius:6px}
 .footer{text-align:center;margin:24px 0 10px}
 @media(max-width:760px){.grid{grid-template-columns:1fr}.wrap{padding:13px}.panel{padding:16px}}
 </style>
@@ -81,7 +82,7 @@ input[type=text]{width:100%;margin-top:6px;padding:12px;border-radius:10px;borde
       <h2>2. Данные экзаменуемого</h2>
       <label class="field">Имя Фамилия *<input type="text" name="name" placeholder="Иван Иванов" required></label>
       <label class="field">Static ID *<input type="text" name="staticId" placeholder="12345" required></label>
-      <label class="field">Discord ID<input type="text" name="discordId" placeholder="123456789012345678"></label>
+      <label class="field">Discord ID <span class="hint" tabindex="0" aria-label="Как узнать Discord ID">ⓘ<span class="hint-card" role="tooltip">Откройте профиль пользователя в Discord и выберите «Копировать ID пользователя».<img src="/discord-id-guide.jpg" alt="Подсказка: пункт «Копировать ID пользователя» в профиле Discord"></span></span><input type="text" name="discordId" placeholder="123456789012345678"></label>
       <button class="btn" type="submit">Начать экзамен</button>
     </section>
   </form>
