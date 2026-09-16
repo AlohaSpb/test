@@ -50,11 +50,13 @@ function questionPage(attempt,bank){
 async function sendDiscord(attempt,bank,correct,total,percent,passed,mistakes){
   const webhook=process.env.DISCORD_WEBHOOK_URL;if(!webhook)return false;
   const embeds=[];
+  const discordId=String(attempt.discord_id||'').trim();
+  const mention=/^\d{17,20}$/.test(discordId)?`<@${discordId}>`:'';
   const err=mistakes.slice(0,6).map((m,i)=>`**${i+1}. ${m.q}**\nОтвет экзаменуемого: ${m.selected.length?m.selected.join('; '):'нет ответа / таймаут'}\n\nОснование: ${m.basis}`).join('\n\n');
   const result={color:passed?0x22c55e:0xef4444,title:passed?'✅ ТЕСТ СДАН':'❌ ТЕСТ НЕ СДАН',description:`**${bank.title}**`,fields:[{name:'👤 Сотрудник',value:safeText(attempt.player_name),inline:true},{name:'🆔 Static ID',value:safeText(attempt.static_id,50),inline:true},{name:'📊 Результат',value:`${correct}/${total} (${percent}%)`,inline:true}],timestamp:new Date().toISOString()};
   if(err)result.fields.push({name:'🔎 Ошибки',value:err.slice(0,1000)});
   embeds.push(result);
-  try{const r=await fetch(webhook,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'ДПК • Академия',embeds,allowed_mentions:{parse:[]}})});return r.ok}catch{return false}
+  try{const r=await fetch(webhook,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'ДПК • Академия',content:mention,embeds,allowed_mentions:{parse:[],users:mention?[discordId]:[]}})});return r.ok}catch{return false}
 }
 async function answer(req,res,id,qid,selected,forced=false){
   const sql=getClient(),rows=await sql`SELECT * FROM dpk_exam_attempts WHERE id=${id} LIMIT 1`;
