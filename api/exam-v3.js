@@ -90,5 +90,5 @@ export default async function handler(req,res){
     const id=crypto.randomUUID(),qo=shuffle(bank.questions.map(q=>q.id)),oo={};for(const q of bank.questions)oo[q.id]=shuffle(q.o.map((_,i)=>i));
     await sql`INSERT INTO dpk_exam_attempts(id,test_id,player_name,player_name_norm,static_id,discord_id,question_order,option_orders,answers,current_index,question_started_at) VALUES(${id},${testId},${name},${normalizeName(name)},${staticId},${discordId||null},${sql.json(qo)},${sql.json(oo)},${sql.json({})},0,NOW())`;
     const a=(await sql`SELECT * FROM dpk_exam_attempts WHERE id=${id} LIMIT 1`)[0];return res.status(200).send(questionPage(a,bank));
-  }catch(e){console.error(e);return res.status(500).send(page('<section class="panel warn"><h2>Ошибка экзамена</h2><p>Проверьте логи Vercel.</p><a class="btn secondary" href="/">Главный экран</a></section>'))}
+  }catch(e){console.error(e);return res.status(500).send(page(`<section class="panel warn"><h2>Ошибка экзамена</h2><p>${esc(String(e?.message||'Неизвестная ошибка').slice(0,300))}</p><a class="btn secondary" href="/">Главный экран</a></section>`))}
 }
