@@ -35,7 +35,7 @@ fetch('/api/spravochnik-data').then(response => {
 }).then(text => {
   for (const row of parseCsv(text)) {
     if (/^\d/.test((row[1] || '').trim()) && row[2] && row[3]) all.push({ kind: 'uk', article: row[1], name: row[2], punishment: row[3], stars: row[4], notes: [row[5], row[6]].filter(Boolean).join(' ') });
-    if (/^\d/.test((row[8] || '').trim()) && row[9] && row[10]) all.push({ kind: 'koap', article: row[8], name: row[9], punishment: row[10], stars: 'Только штраф', notes: '' });
+    if (/^\d/.test((row[8] || '').trim()) && row[9] && row[10]) all.push({ kind: 'koap', article: row[8], name: row[9], punishment: row[10], stars: 'Штраф', notes: '' });
   }
   render();
 }).catch(() => {
