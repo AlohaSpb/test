@@ -1,2 +1,190 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Справочник статей — Тверской РО</title><style>*{box-sizing:border-box}body{margin:0;background:#0b0d10;color:#f4f6fa;font:16px/1.45 Arial,sans-serif}.top{height:4px;background:linear-gradient(90deg,#fff 0 33%,#2563eb 33% 66%,#b91c1c 66%)}main{max-width:1180px;margin:auto;padding:22px 16px 46px}.back{display:inline-block;color:#fff;text-decoration:none;background:#9f1f1f;padding:10px 14px;border-radius:9px;font-weight:700}h1{margin:18px 0 4px}.muted{color:#abb3c0}.tools{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.tools input{flex:1;min-width:230px;padding:12px;border:1px solid #394150;background:#15181e;color:#fff;border-radius:9px}.tools button{border:1px solid #394150;border-radius:9px;padding:10px 13px;background:#1b2029;color:#e5e7eb;cursor:pointer}.tools button.active{background:#2563eb;border-color:#60a5fa;color:#fff}.stats{font-size:14px;color:#abb3c0;margin:0 0 10px}.table-wrap{overflow:auto;border:1px solid #303640;border-radius:12px;background:#15181e}table{width:100%;border-collapse:collapse;min-width:760px}th,td{padding:11px 12px;border-bottom:1px solid #2b3039;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#202733;color:#dbeafe}tr:hover td{background:#1b2028}.stars{color:#fbbf24;white-space:nowrap}.fine{color:#9ca3af}.badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:12px;background:#33210d;color:#fcd34d}.notice{padding:13px 15px;margin:16px 0;background:#101b2a;border-left:4px solid #60a5fa;border-radius:0 8px 8px 0}.hidden{display:none}@media(max-width:600px){main{padding:16px 11px}h1{font-size:24px}}</style></head><body><div class="top"></div><main><a class="back" href="/pamyatka.html">← К памятке</a><h1>Справочник статей</h1><p class="muted">Быстрый поиск по УК и КоАП: состав, наказание, звёзды розыска и дополнительные санкции. Данные загружаются из предоставленной таблицы.</p><div class="notice">★ = до 10 минут задержания за одну звезду. Значок 📕 означает судимость, 🧱 — административный арест, 🪪 — лишение ВУ.</div><div class="tools"><input id="search" type="search" placeholder="Например: убийство, 73.1, оружие…"><button class="active" data-type="all">Все</button><button data-type="uk">УК</button><button data-type="koap">КоАП</button></div><p class="stats" id="stats">Загрузка справочника…</p><div class="table-wrap"><table><thead><tr><th>Кодекс</th><th>Статья</th><th>Наименование</th><th>Наказание / штраф</th><th>Звёзды</th><th>Отметки</th></tr></thead><tbody id="rows"></tbody></table></div><p class="muted">Если правила сервера изменились, приоритет у их актуальной редакции.</p></main><script>const sheet='https://docs.google.com/spreadsheets/d/1XsuwvgvFXm9UEXgxUxVfBdrZKwTHVHv5LityUtkikBo/gviz/tq?tqx=out:csv&gid=0';let all=[],kind='all';const esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));function csv(s){let a=[],r=[],v='',q=false;for(let i=0;i<s.length;i++){let c=s[i],n=s[i+1];if(c==='"'&&q&&n==='"'){v+='"';i++}else if(c==='"')q=!q;else if(c===','&&!q){r.push(v);v=''}else if((c==='\n'||c==='\r')&&!q){if(c==='\r'&&n==='\n')i++;r.push(v);if(r.some(Boolean))a.push(r);r=[];v=''}else v+=c}r.push(v);if(r.some(Boolean))a.push(r);return a}function draw(){const q=document.querySelector('#search').value.trim().toLowerCase(),x=all.filter(z=>(kind==='all'||z.kind===kind)&&(!q||Object.values(z).join(' ').toLowerCase().includes(q)));document.querySelector('#rows').innerHTML=x.map(z=>`<tr><td><b>${z.kind==='uk'?'УК':'КоАП'}</b></td><td>${esc(z.article)}</td><td>${esc(z.name)}</td><td>${esc(z.punishment)}</td><td class="stars">${esc(z.stars||'—')}</td><td class="fine">${esc(z.notes||'—')}</td></tr>`).join('');document.querySelector('#stats').textContent=`Найдено статей: ${x.length}`}.fetch(sheet).then(r=>{if(!r.ok)throw Error();return r.text()}).then(t=>{for(const r of csv(t)){if(/^\d/.test((r[1]||'').trim())&&r[2]&&r[3])all.push({kind:'uk',article:r[1],name:r[2],punishment:r[3],stars:r[4],notes:[r[5],r[6]].filter(Boolean).join(' ')});if(/^\d/.test((r[8]||'').trim())&&r[9]&&r[10])all.push({kind:'koap',article:r[8],name:r[9],punishment:r[10],stars:'—',notes:r[11]})}draw()}).catch(()=>{document.querySelector('#stats').innerHTML='Не удалось загрузить данные. <a href="https://docs.google.com/spreadsheets/d/1XsuwvgvFXm9UEXgxUxVfBdrZKwTHVHv5LityUtkikBo/edit?gid=0#gid=0" target="_blank">Открыть исходную таблицу</a>.'});document.querySelector('#search').oninput=draw;document.querySelectorAll('[data-type]').forEach(b=>b.onclick=()=>{kind=b.dataset.type;document.querySelectorAll('[data-type]').forEach(x=>x.classList.toggle('active',x===b));draw()});</script></body></html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Справочник статей — Тверской РО</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #0b0d10;
+        color: #f4f6fa;
+        font:
+          16px/1.45 Arial,
+          sans-serif;
+      }
+      .top {
+        height: 4px;
+        background: linear-gradient(
+          90deg,
+          #fff 0 33%,
+          #2563eb 33% 66%,
+          #b91c1c 66%
+        );
+      }
+      main {
+        max-width: 1180px;
+        margin: auto;
+        padding: 22px 16px 46px;
+      }
+      .back {
+        display: inline-block;
+        color: #fff;
+        text-decoration: none;
+        background: #9f1f1f;
+        padding: 10px 14px;
+        border-radius: 9px;
+        font-weight: 700;
+      }
+      h1 {
+        margin: 18px 0 4px;
+      }
+      .muted {
+        color: #abb3c0;
+      }
+      .tools {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 20px 0;
+      }
+      .tools input {
+        flex: 1;
+        min-width: 230px;
+        padding: 12px;
+        border: 1px solid #394150;
+        background: #15181e;
+        color: #fff;
+        border-radius: 9px;
+      }
+      .tools button {
+        border: 1px solid #394150;
+        border-radius: 9px;
+        padding: 10px 13px;
+        background: #1b2029;
+        color: #e5e7eb;
+        cursor: pointer;
+      }
+      .tools button.active {
+        background: #2563eb;
+        border-color: #60a5fa;
+        color: #fff;
+      }
+      .stats {
+        font-size: 14px;
+        color: #abb3c0;
+        margin: 0 0 10px;
+      }
+      .table-wrap {
+        overflow: auto;
+        border: 1px solid #303640;
+        border-radius: 12px;
+        background: #15181e;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+      }
+      th,
+      td {
+        padding: 11px 12px;
+        border-bottom: 1px solid #2b3039;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        background: #202733;
+        color: #dbeafe;
+      }
+      tr:hover td {
+        background: #1b2028;
+      }
+      .stars {
+        color: #fbbf24;
+        white-space: nowrap;
+      }
+      .fine {
+        color: #9ca3af;
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 7px;
+        font-size: 12px;
+        background: #33210d;
+        color: #fcd34d;
+      }
+      .notice {
+        padding: 13px 15px;
+        margin: 16px 0;
+        background: #101b2a;
+        border-left: 4px solid #60a5fa;
+        border-radius: 0 8px 8px 0;
+      }
+      .hidden {
+        display: none;
+      }
+      @media (max-width: 600px) {
+        main {
+          padding: 16px 11px;
+        }
+        h1 {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top"></div>
+    <main>
+      <a class="back" href="/pamyatka.html">← К памятке</a>
+      <h1>Справочник статей</h1>
+      <p class="muted">
+        Быстрый поиск по УК и КоАП: состав, наказание, звёзды розыска и
+        дополнительные санкции. Данные загружаются из предоставленной таблицы.
+      </p>
+      <div class="notice">
+        ★ = до 10 минут задержания за одну звезду. Значок 📕 означает судимость,
+        🧱 — административный арест, 🪪 — лишение ВУ.
+      </div>
+      <div class="tools">
+        <input
+          id="search"
+          type="search"
+          placeholder="Например: убийство, 73.1, оружие…"
+        /><button class="active" data-type="all">Все</button
+        ><button data-type="uk">УК</button
+        ><button data-type="koap">КоАП</button>
+      </div>
+      <p class="stats" id="stats">Загрузка справочника…</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Кодекс</th>
+              <th>Статья</th>
+              <th>Наименование</th>
+              <th>Наказание / штраф</th>
+              <th>Звёзды</th>
+              <th>Отметки</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p class="muted">
+        Если правила сервера изменились, приоритет у их актуальной редакции.
+      </p>
+    </main>
+    <script type="application/disabled">
+      const sheet='https://docs.google.com/spreadsheets/d/1XsuwvgvFXm9UEXgxUxVfBdrZKwTHVHv5LityUtkikBo/gviz/tq?tqx=out:csv&gid=0';let all=[],kind='all';const esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));function csv(s){let a=[],r=[],v='',q=false;for(let i=0;i<s.length;i++){let c=s[i],n=s[i+1];if(c==='"'&&q&&n==='"'){v+='"';i++}else if(c==='"')q=!q;else if(c===','&&!q){r.push(v);v=''}else if((c==='\n'||c==='\r')&&!q){if(c==='\r'&&n==='\n')i++;r.push(v);if(r.some(Boolean))a.push(r);r=[];v=''}else v+=c}r.push(v);if(r.some(Boolean))a.push(r);return a}function draw(){const q=document.querySelector('#search').value.trim().toLowerCase(),x=all.filter(z=>(kind==='all'||z.kind===kind)&&(!q||Object.values(z).join(' ').toLowerCase().includes(q)));document.querySelector('#rows').innerHTML=x.map(z=>`<tr><td><b>${z.kind==='uk'?'УК':'КоАП'}</b></td><td>${esc(z.article)}</td><td>${esc(z.name)}</td><td>${esc(z.punishment)}</td><td class="stars">${esc(z.stars||'—')}</td><td class="fine">${esc(z.notes||'—')}</td></tr>`).join('');document.querySelector('#stats').textContent=`Найдено статей: ${x.length}`}.fetch(sheet).then(r=>{if(!r.ok)throw Error();return r.text()}).then(t=>{for(const r of csv(t)){if(/^\d/.test((r[1]||'').trim())&&r[2]&&r[3])all.push({kind:'uk',article:r[1],name:r[2],punishment:r[3],stars:r[4],notes:[r[5],r[6]].filter(Boolean).join(' ')});if(/^\d/.test((r[8]||'').trim())&&r[9]&&r[10])all.push({kind:'koap',article:r[8],name:r[9],punishment:r[10],stars:'—',notes:r[11]})}draw()}).catch(()=>{document.querySelector('#stats').innerHTML='Не удалось загрузить данные. <a href="https://docs.google.com/spreadsheets/d/1XsuwvgvFXm9UEXgxUxVfBdrZKwTHVHv5LityUtkikBo/edit?gid=0#gid=0" target="_blank">Открыть исходную таблицу</a>.'});document.querySelector('#search').oninput=draw;document.querySelectorAll('[data-type]').forEach(b=>b.onclick=()=>{kind=b.dataset.type;document.querySelectorAll('[data-type]').forEach(x=>x.classList.toggle('active',x===b));draw()});
+    </script>
+    <script src="/spravochnik.js"></script>
+  </body>
+</html>
